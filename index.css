@@ -197,15 +197,15 @@ input[type="file"]::file-selector-button:hover {
   cursor: pointer;
 }
 
-.tempo-control {
+.tempo-control, .image-count-control {
   display: flex;
   align-items: center;
   gap: 1rem;
 }
-.tempo-control input[type="range"] {
+.tempo-control input[type="range"], .image-count-control input[type="range"] {
   flex-grow: 1;
 }
-.tempo-control input[type="number"] {
+.tempo-control input[type="number"], .image-count-control input[type="number"] {
   width: 70px;
 }
 

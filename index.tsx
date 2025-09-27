@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
@@ -7,14 +8,17 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 // Professionally revised lists based on international music terminology standards
 const INITIAL_GENRE_OPTIONS = [
   // Core Genres
-  "Pop", "Rock", "Hip Hop", "R&B & Soul", "Jazz", "Blues", "Country", "Folk", "Reggae", "Latin", "Classical", "Funk", "Metal", "World", 
+  "Pop", "Rock", "Hip Hop", "R&B & Soul", "Jazz", "Blues", "Country", "Folk", "Dangdut", "Reggae", "Latin", "Classical", "Funk", "Metal", "World", 
   // Major Electronic Genres
   "Electronic", "House", "Techno", "Trance", "Dubstep", "Drum and Bass", "Ambient"
 ];
 
 const INITIAL_SUBGENRE_OPTIONS = [
   // Indonesian Fusion Specialties
-  "Indonesian Traditional Dance Fusion", "Indonesian Electronic Dance Fusion", "Dangdut Electronic Fusion", "Indonesian Folk/Ethnic Fusion",
+  "Indonesian Traditional Dance Fusion", "Indonesian Electronic Dance Fusion", "Dangdut Electronic Fusion", "Indonesian Folk/Ethnic Fusion", "Campursari", "Jaipongan",
+
+  // Dangdut Subgenres
+  "Dangdut Koplo", "Dangdut Klasik", "Dangdut Kontemporer",
   
   // Pop Subgenres
   "Dance-Pop", "Indie Pop", "Hyperpop", "Pop Ballad", "Synth-pop",
@@ -63,7 +67,7 @@ const INITIAL_SUBGENRE_OPTIONS = [
 ];
 
 const INITIAL_WORLD_MUSIC_OPTIONS = [
-    "Indonesian Gamelan", "Indonesian Kroncong", "West African Afrobeat", "Middle Eastern Oud", "Latin Salsa", "Celtic Folk", "Indian Sitar", "Japanese Koto", "Brazilian Bossa Nova"
+    "Indonesian Gamelan", "Indonesian Kroncong", "Javanese Campursari", "Sundanese Jaipongan", "West African Afrobeat", "Middle Eastern Oud", "Latin Salsa", "Celtic Folk", "Indian Sitar", "Japanese Koto", "Brazilian Bossa Nova"
 ];
 
 const MOOD_OPTIONS = ["Energetic", "Joyful", "Melancholic", "Reflective", "Aggressive", "Calm", "Romantic"];
@@ -306,6 +310,7 @@ const App = () => {
   const [tempo, setTempo] = useState(120);
   const [key, setKey] = useState(KEY_OPTIONS[0]);
   const [timeSignature, setTimeSignature] = useState(TIME_SIGNATURE_OPTIONS[0]);
+  const [numberOfImages, setNumberOfImages] = useState(4);
   const [backgroundTrack, setBackgroundTrack] = useState(null);
   const [backgroundTrackUrl, setBackgroundTrackUrl] = useState(null);
 
@@ -486,22 +491,24 @@ ${fullTemplate}
   const handleGenerateImages = async () => {
     setImageLoading(true);
     setImageError(null);
-    setGeneratedImages([]);
+    setGeneratedImages([]); // Reset images at the beginning of the generation process
 
     try {
-      const summaryBlock = outputBlocks.find(b => b.title === "Style Summary");
       let songDescription = `A visual representation of a song with the mood '${mood}' and theme '${theme}'.`; // Fallback
-      if (summaryBlock) {
+      if (outputBlocks.length > 0) {
+        const summaryBlock = outputBlocks.find(b => b.title === "Style Summary");
+        if (summaryBlock) {
           const detailedSummaryMarker = '[style detailed (1000 chars):';
           const summaryContent = summaryBlock.content;
           const detailedIndex = summaryContent.toLowerCase().indexOf(detailedSummaryMarker.toLowerCase());
           if (detailedIndex !== -1) {
-              songDescription = summaryContent.substring(detailedIndex + detailedSummaryMarker.length).replace(']', '').trim();
+            songDescription = summaryContent.substring(detailedIndex + detailedSummaryMarker.length).replace(']', '').trim();
           }
+        }
       }
 
       const imagePrompt = `
-        Generate 4 photorealistic images of a band named "${artistRef || 'an independent artist'}" performing their song titled "${songTitle || 'Untitled'}" live on stage.
+        Generate a photorealistic image of a band named "${artistRef || 'an independent artist'}" performing their song titled "${songTitle || 'Untitled'}" live on stage.
         The band's appearance, instruments, stage lighting, and overall atmosphere must reflect the song's characteristics:
         - Genre: ${genre}
         - Mood: ${mood}
@@ -511,21 +518,35 @@ ${fullTemplate}
         ---
         ${songDescription}
         ---
-        Capture dynamic, high-energy action shots of the band members performing with passion.
+        Capture a dynamic, high-energy action shot of the band members performing with passion.
       `;
 
-      const response = await ai.models.generateImages({
+      const maxImagesPerRequest = 4;
+      let remainingImages = numberOfImages;
+      const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+      while (remainingImages > 0) {
+        const batchSize = Math.min(remainingImages, maxImagesPerRequest);
+
+        const response = await ai.models.generateImages({
           model: 'imagen-4.0-generate-001',
           prompt: imagePrompt,
           config: {
-            numberOfImages: 4,
+            numberOfImages: batchSize,
             outputMimeType: 'image/jpeg',
             aspectRatio: '16:9',
           },
-      });
+        });
 
-      const imageUrls = response.generatedImages.map(img => `data:image/jpeg;base64,${img.image.imageBytes}`);
-      setGeneratedImages(imageUrls);
+        const imageUrls = response.generatedImages.map(img => `data:image/jpeg;base64,${img.image.imageBytes}`);
+        setGeneratedImages(prevImages => [...prevImages, ...imageUrls]);
+
+        remainingImages -= batchSize;
+
+        if (remainingImages > 0) {
+          await sleep(1500); // Wait 1.5 seconds before the next batch to avoid rate limiting.
+        }
+      }
 
     } catch (e) {
       console.error(e);
@@ -669,8 +690,23 @@ ${fullTemplate}
           </div>
 
           <button onClick={handleGenerate} disabled={loading} className="btn btn-primary btn-full-width">
-            {loading ? <div className="spinner small"></div> : "Generate"}
+            {loading ? <div className="spinner small"></div> : "Generate Template"}
           </button>
+
+          <hr style={{margin: '1.5rem 0', border: '1px solid var(--border-color)'}} />
+          
+          <div className="form-group">
+            <label htmlFor="numberOfImages-slider">Number of Images: {numberOfImages}</label>
+            <div className="image-count-control">
+              <input type="range" id="numberOfImages-slider" min="1" max="30" value={numberOfImages} onChange={(e) => setNumberOfImages(Number(e.target.value))} />
+              <input type="number" id="numberOfImages-number" min="1" max="30" value={numberOfImages} onChange={(e) => setNumberOfImages(Number(e.target.value))} />
+            </div>
+          </div>
+          
+           <button onClick={handleGenerateImages} disabled={imageLoading} className="btn btn-secondary btn-full-width">
+             {imageLoading ? <div className="spinner small"></div> : "Generate Band Images"}
+           </button>
+
         </div>
         <div className="output">
           {error && <div className="error-message">{error}</div>}
@@ -679,7 +715,7 @@ ${fullTemplate}
           {imageLoading && (
             <div className="spinner-wrapper">
               <div className="spinner"></div>
-              <p>Generating band images...</p>
+              <p>Generating band images ({generatedImages.length}/{numberOfImages})...</p>
             </div>
           )}
 
@@ -716,9 +752,6 @@ ${fullTemplate}
           {outputBlocks.length > 0 && (
             <>
               <div className="output-actions">
-                <button onClick={handleGenerateImages} disabled={imageLoading} className="btn btn-secondary">
-                   {imageLoading ? <div className="spinner small"></div> : "Generate Band Images"}
-                </button>
                 <button onClick={handleGenerateVisualizer} className="btn btn-secondary">
                   Generate Visualizer
                 </button>
