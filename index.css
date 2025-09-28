@@ -374,7 +374,6 @@ input[type="range"]::-moz-range-thumb {
   background-color: #000;
 }
 
-
 .btn-copy {
     position: absolute;
     top: 1rem;
@@ -422,6 +421,7 @@ pre {
   justify-content: center;
   height: 100%;
   gap: 1rem;
+  text-align: center;
 }
 
 .spinner {

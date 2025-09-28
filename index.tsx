@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
@@ -441,8 +442,9 @@ const App = () => {
     setAssistantLoading(true);
     setError(null);
     try {
-      let prompt = `You are an expert music analyst and A&R scout with a talent for identifying unique sonic identities. Your task is to suggest a complete set of parameters for a new hit song. 
-Provide suggestions for: genre, subgenre, worldMusic (as a specific influence like 'Indonesian Gamelan'), mood, theme, tempo (a number between 40-220), key (e.g., 'C', 'G#'), timeSignature (e.g., '4/4'), and lyricLanguage.
+      let prompt = `You are an expert music analyst and A&R scout with a talent for identifying unique sonic identities. Your task is to suggest a complete set of parameters for a new hit song.
+First, define a unique sonic identity by suggesting a 'genre', 'subgenre', 'worldMusic' influence (like 'Indonesian Gamelan'), 'mood', 'theme', and 'lyricLanguage'.
+Then, based on the creative direction you've just established, you MUST suggest a technically appropriate 'tempo' (a number between 40-220), 'key' (e.g., 'C', 'G#'), and 'timeSignature' (e.g., '4/4') that perfectly match the characteristics of the genre, mood, and theme you proposed.
 
 Your most important task is to define a unique sonic identity through the 'genre' and 'subgenre' suggestions. Avoid generic classifications at all costs. You MUST invent or combine genres to create a fresh, evocative label that perfectly captures the song's mood and theme. Think like a music journalist coining a new movement. Examples of the expected creativity include 'Cinematic Pop', 'Downtempo Gamelan', or 'Experimental Jazz Fusion'. Do not just pick from a standard list; your value is in creating a novel classification.`;
 
@@ -554,7 +556,8 @@ The lyrics themselves must be in ${lyricLanguage}, while all other metadata in t
     const fullTemplate = `${finalTemplate}\n\n${TEMPLATE_BLOCK_2}`;
     const prompt = `You are a professional music producer. Your task is to complete the following music composition template. Fill in every placeholder denoted by '...'. 
 For the '[melodic elements]' section, you MUST provide highly descriptive and creative ideas. Do not use generic terms. Instead, you must specifically detail: 1) The **melodic contour** (the specific shape and trajectory of the melody, e.g., 'a dramatic, ascending arc for the chorus followed by a gentle, cascading descent'). 2) The strategic use of **intervals** to create emotion (e.g., 'utilize wide, octave leaps for moments of dramatic tension, contrasted with close, stepwise motion in the verses to convey intimacy'). 3) A unique and memorable **motif** (a short melodic or rhythmic idea) that will serve as the song's central, recurring hook. 
-For the '[harmonic elements]' section, provide creative details on chord progressions and textures. For the '[rhythmic elements]' section, be highly specific. Describe the core groove pattern, the use of syncopation to create rhythmic interest, and suggest opportunities for polyrhythms, especially by layering traditional percussion from the '${worldMusic}' influence over the main drumbeat. 
+For the '[harmonic elements]' section, you must provide sophisticated and emotionally resonant ideas. Do not list simple triads. Instead, specify: 1) The **chord progression** using Roman numeral analysis or specific chord names, explaining how it supports the song's emotional arc. 2) Creative **voicings** for instruments like piano or guitar (e.g., 'use open, spread voicings in the verses for a spacious feel, then tight, root-position voicings in the chorus for punch'). 3) The **harmonic rhythm** (the rate of chord changes), suggesting how it should vary between sections (e.g., 'slow, one-chord-per-bar changes in the verses to build tension, accelerating to two chords per bar in the pre-chorus').
+For the '[rhythmic elements]' section, be highly specific. Describe the core groove pattern, the use of syncopation to create rhythmic interest, and suggest opportunities for polyrhythms, especially by layering traditional percussion from the '${worldMusic}' influence over the main drumbeat. 
 For any '[instrumental solo]' sections, you MUST select an instrument that is highly relevant to the song's genre and the specified 'World Music Influence' ('${worldMusic}'). Describe the solo's style (e.g., melodic, virtuosic, atmospheric) and fill in the duration placeholder.
 The output must strictly follow the provided structure and be a single block of text. Ensure the total character count for the generated lyrics and music structure does not exceed ${charLimit}. Make sure to complete all sections, including the '[style summary]' and '[style detailed]' at the end.
 
@@ -659,13 +662,17 @@ ${fullTemplate}
         remainingImages -= batchSize;
 
         if (remainingImages > 0) {
-          await sleep(1500); // Wait 1.5 seconds before the next batch to avoid rate limiting.
+          await sleep(10000); // Wait 10 seconds before the next batch to avoid rate limiting.
         }
       }
 
     } catch (e) {
       console.error(e);
-      setImageError(`An error occurred while generating images: ${e.message}`);
+      if (e && e.message && (e.message.toLowerCase().includes('quota') || e.message.toLowerCase().includes('rate limit') || e.message.toLowerCase().includes('resource_exhausted'))) {
+        setImageError("You've exceeded the API quota. Please wait a moment before trying again, or try generating fewer images.");
+      } else {
+        setImageError(`An error occurred while generating images: ${e.message}`);
+      }
     } finally {
       setImageLoading(false);
     }
@@ -818,7 +825,7 @@ ${fullTemplate}
             </div>
           </div>
           
-           <button onClick={handleGenerateImages} disabled={imageLoading} className="btn btn-secondary btn-full-width">
+           <button onClick={handleGenerateImages} disabled={imageLoading || loading} className="btn btn-secondary btn-full-width">
              {imageLoading ? <div className="spinner small"></div> : "Generate Band Images"}
            </button>
 
