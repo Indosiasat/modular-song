@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
@@ -8,66 +7,164 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 // Professionally revised lists based on international music terminology standards
 const INITIAL_GENRE_OPTIONS = [
   // Core Genres
-  "Pop", "Rock", "Hip Hop", "R&B & Soul", "Jazz", "Blues", "Country", "Folk", "Dangdut", "Reggae", "Latin", "Classical", "Funk", "Metal", "World", 
+  "Pop", "Rock", "Hip Hop", "R&B & Soul", "Jazz", "Blues", "Country", "Folk", "Dangdut", "Reggae", "Latin", "Classical", "Funk", "Metal", "World", "Indie", "Afrobeats", "Soundtrack", "Experimental", "New Age", "Spoken Word",
   // Major Electronic Genres
   "Electronic", "House", "Techno", "Trance", "Dubstep", "Drum and Bass", "Ambient"
 ];
 
 const INITIAL_SUBGENRE_OPTIONS = [
-  // Indonesian Fusion Specialties
-  "Indonesian Traditional Dance Fusion", "Indonesian Electronic Dance Fusion", "Dangdut Electronic Fusion", "Indonesian Folk/Ethnic Fusion", "Campursari", "Jaipongan",
+  // Indonesian & Regional Fusion
+  "Campursari", "Dangdut Electronic Fusion", "Indonesian Electronic Dance Fusion", "Indonesian Folk/Ethnic Fusion", "Indonesian Traditional Dance Fusion", "Jaipongan",
 
   // Dangdut Subgenres
-  "Dangdut Koplo", "Dangdut Klasik", "Dangdut Kontemporer",
+  "Dangdut Klasik", "Dangdut Kontemporer", "Dangdut Koplo",
   
   // Pop Subgenres
-  "Dance-Pop", "Indie Pop", "Hyperpop", "Pop Ballad", "Synth-pop",
+  "Art Pop", "Baroque Pop", "Bubblegum Pop", "C-Pop", "Chamber Pop", "Dance-Pop", "Dream Pop", "Hyperpop", "Indie Pop", "J-Pop", "Jangle Pop", "K-Pop", "Pop Ballad", "Power Pop", "Sophisti-Pop", "Synth-pop",
   
   // Rock Subgenres
-  "Alternative Rock", "Indie Rock", "Progressive Rock", "Punk Rock", "Hard Rock",
+  "Alternative Rock", "Art Rock", "Blues Rock", "Emo", "Folk Rock", "Garage Rock", "Glam Rock", "Grunge", "Hard Rock", "Indie Rock", "Math Rock", "Noise Rock", "Post-Hardcore", "Post-Punk", "Post-Rock", "Progressive Rock", "Psychedelic Rock", "Punk Rock", "Shoegaze", "Southern Rock", "Stoner Rock", "Surf Rock",
   
   // Metal Subgenres
-  "Heavy Metal", "Thrash Metal", "Death Metal", "Power Metal",
+  "Alternative Metal", "Avant-Garde Metal", "Black Metal", "Death Metal", "Djent", "Doom Metal", "Folk Metal", "Glam Metal", "Gothic Metal", "Groove Metal", "Heavy Metal", "Industrial Metal", "Metalcore", "Nu Metal", "Power Metal", "Progressive Metal", "Sludge Metal", "Speed Metal", "Symphonic Metal", "Thrash Metal",
   
   // Hip Hop Subgenres
-  "Trap", "Lo-fi Hip Hop", "Boom Bap", "Drill",
+  "Boom Bap", "Chopped and Screwed", "Cloud Rap", "Conscious Hip Hop", "Crunk", "Drill", "G-Funk", "Gangsta Rap", "Grime", "Horrorcore", "Hyphy", "Lo-fi Hip Hop", "Mumble Rap", "Political Hip Hop", "Trap", "UK Drill",
   
   // R&B & Soul Subgenres
-  "Neo-Soul", "Contemporary R&B",
+  "Alternative R&B", "Contemporary R&B", "Doo-Wop", "Funk", "Motown", "Neo-Soul", "Psychedelic Soul", "Quiet Storm",
   
   // Jazz Subgenres
-  "Smooth Jazz", "Bebop", "Jazz Fusion",
+  "Acid Jazz", "Avant-Garde Jazz", "Bebop", "Big Band", "Bossa Nova", "Cool Jazz", "Free Jazz", "Hard Bop", "Jazz Fusion", "Latin Jazz", "Modal Jazz", "Smooth Jazz", "Swing",
   
   // Blues Subgenres
-  "Delta Blues", "Chicago Blues", "Electric Blues",
+  "Acoustic Blues", "Chicago Blues", "Delta Blues", "Electric Blues", "Texas Blues",
   
   // Country Subgenres
-  "Country Pop", "Bluegrass",
+  "Americana", "Bakersfield Sound", "Bluegrass", "Country Pop", "Country Rock", "Honky Tonk", "Nashville Sound", "Outlaw Country",
   
   // Folk Subgenres
-  "Singer-Songwriter", "American Folk",
+  "American Folk", "Anti-Folk", "Celtic Folk", "Chamber Folk", "Folk-Punk", "Folk Rock", "Freak Folk", "Neofolk", "Psychedelic Folk", "Singer-Songwriter",
 
+  // Latin Subgenres
+  "Bachata", "Bolero", "Cumbia", "Merengue", "Reggaeton", "Salsa", "Tango",
+  
+  // Reggae Subgenres
+  "Dancehall", "Dub", "Rocksteady", "Ska",
+
+  // Classical Subgenres
+  "Baroque", "Classical Period", "Impressionist", "Medieval", "Minimalism", "Modern Classical", "Renaissance", "Romantic",
+
+  // Electronic (General) Subgenres
+  "Ambient", "Bass House", "Berlin School", "Big Beat", "Breakbeat", "Chillwave", "Chiptune", "Downtempo", "Electro", "Eurodance", "Future Bass", "Gabber", "Glitch", "Glitch Hop", "Hardcore", "Hardstyle", "IDM (Intelligent Dance Music)", "Illbient", "Industrial", "Jersey Club", "Phonk", "Psybient", "Synthwave", "Trap (Electronic)", "Trip Hop", "UK Bass", "UK Garage", "Vaporwave", "Witch House",
+  
   // House Subgenres
-  "Deep House", "Progressive House", "Tech House", "Tropical House",
+  "Acid House", "Afro House", "Chicago House", "Deep House", "French House", "Garage House", "Lo-fi House", "Melodic House", "Progressive House", "Tech House", "Tropical House",
 
   // Techno Subgenres
-  "Minimal Techno", "Industrial Techno", "Acid Techno",
+  "Acid Techno", "Detroit Techno", "Dub Techno", "Hard Techno", "Industrial Techno", "Minimal Techno",
 
   // Trance Subgenres
-  "Progressive Trance", "Psytrance", "Uplifting Trance",
+  "Goa Trance", "Progressive Trance", "Psytrance", "Tech Trance", "Uplifting Trance", "Vocal Trance",
 
   // Dubstep Subgenres
-  "Chillstep", "Brostep", "Riddim", "Future Garage",
+  "Brostep", "Chillstep", "Future Garage", "Riddim",
 
   // Drum and Bass Subgenres
-  "Liquid Drum and Bass", "Neurofunk", "Jump-Up",
-
-  // Other Electronic
-  "Chillwave", "IDM (Intelligent Dance Music)", "Downtempo"
+  "Jungle", "Jump-Up", "Liquid Drum and Bass", "Neurofunk",
+  
+  // Experimental & Avant-Garde
+  "Drone", "Free Improvisation", "Lowercase", "Musique Concrète", "Noise", "Noise Pop"
 ];
 
 const INITIAL_WORLD_MUSIC_OPTIONS = [
-    "Indonesian Gamelan", "Indonesian Kroncong", "Javanese Campursari", "Sundanese Jaipongan", "West African Afrobeat", "Middle Eastern Oud", "Latin Salsa", "Celtic Folk", "Indian Sitar", "Japanese Koto", "Brazilian Bossa Nova"
+    // Asia
+    "Arabic Maqam",
+    "Bhangra",
+    "Chinese Guqin",
+    "Indian Carnatic Ragas",
+    "Indian Hindustani Classical",
+    "Indonesian Gamelan (Javanese & Balinese)",
+    "Indonesian Kroncong",
+    "Japanese Koto",
+    "Javanese Campursari",
+    "Klezmer",
+    "Korean Pansori",
+    "Mongolian Khoomei (Throat Singing)",
+    "Persian Dastgah",
+    "Qawwali",
+    "Sephardic Music",
+    "Sundanese Jaipongan",
+    "Thai Piphat",
+    "Turkish Makam",
+    "Vietnamese Nhã nhạc",
+    
+    // Africa
+    "Congolese Soukous",
+    "Ethiopian Jazz (Ethio-jazz)",
+    "Highlife",
+    "Isicathamiya",
+    "Jùjú Music",
+    "Malian Griot Music",
+    "Moroccan Gnawa",
+    "Rai",
+    "South African Mbube",
+    "Taarab",
+    "Tuareg Desert Blues",
+    "West African Afrobeat",
+    "Zimbabwean Mbira Music",
+
+    // Americas
+    "Andean Huayno",
+    "Appalachian Folk",
+    "Argentinian Tango",
+    "Brazilian Bossa Nova",
+    "Cajun Music",
+    "Calypso",
+    "Colombian Cumbia",
+    "Cuban Son",
+    "Forró",
+    "Jamaican Dub",
+    "Mento",
+    "Mexican Mariachi",
+    "Native American Pow-wow music",
+    "Reggae",
+    "Samba",
+    "Soca",
+    "Son Jarocho",
+    "Zydeco",
+    
+    // Europe
+    "Balkan Brass Band",
+    "Celtic Folk (Irish & Scottish)",
+    "Fado (Portugal)",
+    "Flamenco (Spain)",
+    "Polka",
+    "Rembetika (Greece)",
+    "Russian Balalaika Music",
+    "Scandinavian Kulning",
+    
+    // Oceania
+    "Australian Didgeridoo Music",
+    "Maori Haka & Waiata",
+    "Melanesian Bamboo Band",
+    "Polynesian Hula Chants",
+
+    // Experimental & Fusion
+    "Afro-Cuban Fusion",
+    "Afro-Futurism",
+    "Ambient World Music",
+    "Balkan-Klezmer Fusion",
+    "Celtic Punk",
+    "Electro-Cumbia",
+    "Electro-Folk",
+    "Ethno-Jazz",
+    "Ethno-Techno",
+    "Global Bass",
+    "Global Fusion",
+    "Psychedelic World Fusion",
+    "Raga Rock",
+    "Tropical Bass",
 ];
 
 const MOOD_OPTIONS = ["Energetic", "Joyful", "Melancholic", "Reflective", "Aggressive", "Calm", "Romantic"];
@@ -100,7 +197,7 @@ const TEMPLATE_BLOCK_1A = `
 [chorus: ...]
 [verse 2: ...]
 [bridge: ...]
-[solo/interlude: ...]
+[instrumental solo: (instrument: ..., style: ..., duration: ~8-16 bars)]
 [drop: ...]
 [outro: ...]
 
@@ -141,7 +238,8 @@ const TEMPLATE_BLOCK_1B = `
 [chorus: ... extended]
 [verse 2: ... extended]
 [bridge: ... extended]
-[solo/interlude: ... extended / virtuosic]
+[instrumental solo 1: (instrument: ..., style: ... virtuosic, duration: ~16-32 bars)]
+[instrumental solo 2 (optional): (instrument: ..., style: ... virtuosic, duration: ~16-32 bars)]
 [drop: ... extended / maximum energy]
 [outro: ... extended]
 
@@ -343,7 +441,10 @@ const App = () => {
     setAssistantLoading(true);
     setError(null);
     try {
-      let prompt = "You are an expert music analyst. Your task is to suggest a complete set of parameters for a new hit song. Provide genre, subgenre, worldMusic (as a specific influence like 'Indonesian Gamelan'), mood, theme, tempo (as a number between 40-220), key (e.g., 'C', 'G#'), and timeSignature (e.g., '4/4', '3/4').";
+      let prompt = `You are an expert music analyst and A&R scout with a talent for identifying unique sonic identities. Your task is to suggest a complete set of parameters for a new hit song. 
+Provide suggestions for: genre, subgenre, worldMusic (as a specific influence like 'Indonesian Gamelan'), mood, theme, tempo (a number between 40-220), key (e.g., 'C', 'G#'), timeSignature (e.g., '4/4'), and lyricLanguage.
+
+Your most important task is to define a unique sonic identity through the 'genre' and 'subgenre' suggestions. Avoid generic classifications at all costs. You MUST invent or combine genres to create a fresh, evocative label that perfectly captures the song's mood and theme. Think like a music journalist coining a new movement. Examples of the expected creativity include 'Cinematic Pop', 'Downtempo Gamelan', or 'Experimental Jazz Fusion'. Do not just pick from a standard list; your value is in creating a novel classification.`;
 
       if (artistRef || songTitle) {
         if (artistRef) {
@@ -372,6 +473,7 @@ const App = () => {
               tempo: { type: Type.NUMBER },
               key: { type: Type.STRING },
               timeSignature: { type: Type.STRING },
+              lyricLanguage: { type: Type.STRING },
             },
           },
         },
@@ -400,6 +502,8 @@ const App = () => {
       
       if (suggestions.timeSignature && TIME_SIGNATURE_OPTIONS.includes(suggestions.timeSignature)) setTimeSignature(suggestions.timeSignature);
 
+      if (suggestions.lyricLanguage && LYRIC_LANGUAGE_OPTIONS.includes(suggestions.lyricLanguage)) setLyricLanguage(suggestions.lyricLanguage);
+
 
     } catch (e) {
       console.error(e);
@@ -425,7 +529,14 @@ const App = () => {
     const maxTokens = 8192;
     const thinkingBudget = 512;
 
-    const lyricInstruction = `Write original lyrics in ${lyricLanguage} following the style of artist/band: ${artistRef || "N/A"}, but keep it unique. All metadata must be in English.`;
+    const lyricInstruction = `As a master lyricist, write original, creative, and evocative lyrics in ${lyricLanguage}.
+The lyrics must tell a compelling story with a clear narrative arc, fitting the song's theme ('${theme}').
+Skillfully incorporate at least two of the following lyrical devices to enhance the storytelling:
+- **Alliteration:** Repetition of initial consonant sounds (e.g., "Whispering winds weave wonders").
+- **Internal Rhyme:** Rhymes within a single line (e.g., "I find the time to write the line").
+- **Personification:** Giving human qualities to inanimate objects (e.g., "The lonely moon cried silver tears").
+Emulate the lyrical style of ${artistRef || 'a world-class songwriter'}, but ensure the final output is entirely original.
+The lyrics themselves must be in ${lyricLanguage}, while all other metadata in the template must be in English.`;
 
     let finalTemplate = selectedTemplate
       .replace('[title: ...]', `[title: ${songTitle || '...'}]`)
@@ -441,7 +552,11 @@ const App = () => {
     
     // FIX: Create a clearer, more robust prompt for the AI.
     const fullTemplate = `${finalTemplate}\n\n${TEMPLATE_BLOCK_2}`;
-    const prompt = `You are a professional music producer. Your task is to complete the following music composition template. Fill in every placeholder denoted by '...'. The output must strictly follow the provided structure and be a single block of text. Ensure the total character count for the generated lyrics and music structure does not exceed ${charLimit}. Make sure to complete all sections, including the '[style summary]' and '[style detailed]' at the end.
+    const prompt = `You are a professional music producer. Your task is to complete the following music composition template. Fill in every placeholder denoted by '...'. 
+For the '[melodic elements]' section, you MUST provide highly descriptive and creative ideas. Do not use generic terms. Instead, you must specifically detail: 1) The **melodic contour** (the specific shape and trajectory of the melody, e.g., 'a dramatic, ascending arc for the chorus followed by a gentle, cascading descent'). 2) The strategic use of **intervals** to create emotion (e.g., 'utilize wide, octave leaps for moments of dramatic tension, contrasted with close, stepwise motion in the verses to convey intimacy'). 3) A unique and memorable **motif** (a short melodic or rhythmic idea) that will serve as the song's central, recurring hook. 
+For the '[harmonic elements]' section, provide creative details on chord progressions and textures. For the '[rhythmic elements]' section, be highly specific. Describe the core groove pattern, the use of syncopation to create rhythmic interest, and suggest opportunities for polyrhythms, especially by layering traditional percussion from the '${worldMusic}' influence over the main drumbeat. 
+For any '[instrumental solo]' sections, you MUST select an instrument that is highly relevant to the song's genre and the specified 'World Music Influence' ('${worldMusic}'). Describe the solo's style (e.g., melodic, virtuosic, atmospheric) and fill in the duration placeholder.
+The output must strictly follow the provided structure and be a single block of text. Ensure the total character count for the generated lyrics and music structure does not exceed ${charLimit}. Make sure to complete all sections, including the '[style summary]' and '[style detailed]' at the end.
 
 ---
 ${fullTemplate}
