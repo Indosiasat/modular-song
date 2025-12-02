@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Warga Digital Studio</title>
+
+    <!-- PWA and Mobile Enhancements -->
+    <meta name="theme-color" content="#1e1e1e" />
+    <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiV2FyZ2EgRGlnaXRhbCBTdHVkaW8iLCJzaG9ydF9uYW1lIjoiV0QgU3R1ZGlvIiwiZGVzY3JpcHRpb24iOiJHZW5lcmF0b3Igb3RvbWF0aXMgbXVzaWsgdGVtcGxhdGUiLCJzdGFydF91cmwiOiIuIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzEyMTIxMiIsInRoZW1lX2NvbG9yIjoiIzFlMWUxZSIsImljb25zIjpbeyJzcmMiOiJodHRwczovL3d3dy5nc3RhdGljLmNvbS9pbWFnZXMvYnJhbmRpbmcvcHJvZHVjdC8xeC9nb29nbGVfZ2VtaW5pXzMyZHAucG5nIiwic2l6ZXMiOiIzMngzMiIsInR5cGUiOiJpbWFnZS9wbmcifSx7InNyYyI6Imh0dHBzOi8vd3d3LmdzdGF0aWMuY29tL2ltYWdlcy9icmFuZGluZy9wcm9kdWN0LzF4L2dvb2dsZV9nZW1pbmVfMTkyZHAucG5nIiwic2l6ZXMiOiIxOTJ4MTkyIiwidHlwZSI6ImltYWdlL3BuZyJ9LHsic3JjIjoiaHR0cHM6Ly93d3cuZ3N0YXRpYy5jb20vaW1hZ2VzL2JyYW5kaW5nL3Byb2R1Y3QvMXgvZ29vZ2xlX2dlbWluaV81MTJkcC5wbmciLCJzaXplcyI6IjUxMng1MTIiLCJ0eXBlIjoiaW1hZ2UvcG5nIn1dfQ==" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WD Studio">
+    <link rel="apple-touch-icon" href="https://www.gstatic.com/images/branding/product/1x/google_gemini_192dp.png">
+
     <link rel="stylesheet" href="index.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,6 +31,66 @@
 </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        const swCode = `
+          const CACHE_NAME = 'warga-digital-studio-cache-v1';
+          const urlsToCache = [
+            '/',
+            'index.html',
+            'index.css',
+            'index.js'
+          ];
+
+          self.addEventListener('install', (event) => {
+            event.waitUntil(
+              caches.open(CACHE_NAME).then((cache) => {
+                console.log('Service Worker: Cache opened');
+                return cache.addAll(urlsToCache);
+              }).catch(err => {
+                console.error('Service Worker: Failed to cache', err);
+              })
+            );
+          });
+
+          self.addEventListener('fetch', (event) => {
+            event.respondWith(
+              caches.match(event.request).then((response) => {
+                return response || fetch(event.request);
+              })
+            );
+          });
+
+          self.addEventListener('activate', (event) => {
+            const cacheWhitelist = [CACHE_NAME];
+            event.waitUntil(
+              caches.keys().then((cacheNames) => {
+                return Promise.all(
+                  cacheNames.map((cacheName) => {
+                    if (cacheWhitelist.indexOf(cacheName) === -1) {
+                      console.log('Service Worker: Deleting old cache', cacheName);
+                      return caches.delete(cacheName);
+                    }
+                  })
+                );
+              })
+            );
+          });
+        `;
+        const swBlob = new Blob([swCode], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(swBlob);
+
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register(swUrl)
+            .then(registration => {
+              console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(error => {
+              console.log('ServiceWorker registration failed: ', error);
+            });
+        });
+      }
+    </script>
     <script type="module" src="index.js"></script>
   </body>
 </html>

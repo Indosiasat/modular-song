@@ -1,5 +1,5 @@
 {
   "name": "Modular Song",
-  "description": "Generator otomatis musik template\nInput judul dan artis/band> suggest whit ai>\ngenerate music template\ngenerate band image\ngenerate vizualizer\nstruktur metada musik dan struktur lirik lagu ±5000 karakter\nstyle 200-1000 karakter ",
+  "description": "A music template generator that automatically creates song structures, lyrics, and style summaries. Suggests genres, moods, and technical parameters with AI. Generates band imagery and a music visualizer. Now installable as a PWA for offline access.",
   "requestFramePermissions": []
 }

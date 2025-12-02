@@ -1,9 +1,48 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import ReactDOM from "react-dom/client";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+// --- Helper for Retry Logic ---
+const callWithRetry = async (apiCall: () => Promise<any>, retries = 5, baseDelay = 3000) => {
+    for (let i = 0; i < retries; i++) {
+        try {
+            return await apiCall();
+        } catch (error: any) {
+             let isQuotaError = false;
+             
+             // Check standard HTTP status
+             if (error.status === 429 || error.status === 503) isQuotaError = true;
+             
+             // Check error message string
+             const msg = (error.message || '').toString();
+             if (
+                 msg.includes('429') || 
+                 msg.includes('RESOURCE_EXHAUSTED') || 
+                 msg.toLowerCase().includes('quota') ||
+                 msg.toLowerCase().includes('rate limit')
+             ) {
+                 isQuotaError = true;
+             }
+             
+             // Check nested error object structure (if JSON parsed from response)
+             if (error.error && (error.error.code === 429 || error.error.status === 'RESOURCE_EXHAUSTED')) {
+                 isQuotaError = true;
+             }
+
+            if (isQuotaError && i < retries - 1) {
+                // Exponential backoff with jitter
+                const delayTime = (baseDelay * Math.pow(2, i)) + (Math.random() * 1000);
+                console.warn(`API Rate Limit hit (Attempt ${i + 1}/${retries}). Retrying in ${Math.round(delayTime)}ms...`);
+                await new Promise(resolve => setTimeout(resolve, delayTime));
+                continue;
+            }
+            throw error;
+        }
+    }
+};
+// ------------------------------
 
 // Professionally revised lists based on international music terminology standards
 const INITIAL_GENRE_OPTIONS = [
@@ -60,7 +99,7 @@ const INITIAL_SUBGENRE_OPTIONS = [
   "Ambient", "Bass House", "Berlin School", "Big Beat", "Breakbeat", "Chillwave", "Chiptune", "Downtempo", "Electro", "Eurodance", "Future Bass", "Gabber", "Glitch", "Glitch Hop", "Hardcore", "Hardstyle", "IDM (Intelligent Dance Music)", "Illbient", "Industrial", "Jersey Club", "Phonk", "Psybient", "Synthwave", "Trap (Electronic)", "Trip Hop", "UK Bass", "UK Garage", "Vaporwave", "Witch House",
   
   // House Subgenres
-  "Acid House", "Afro House", "Chicago House", "Deep House", "French House", "Garage House", "Lo-fi House", "Melodic House", "Progressive House", "Tech House", "Tropical House",
+  "Acid House", "Chicago House", "Deep House", "French House", "Lo-fi House", "Melodic House", "Progressive House", "Tech House", "Tropical House",
 
   // Techno Subgenres
   "Acid Techno", "Detroit Techno", "Dub Techno", "Hard Techno", "Industrial Techno", "Minimal Techno",
@@ -168,98 +207,14 @@ const INITIAL_WORLD_MUSIC_OPTIONS = [
     "Tropical Bass",
 ];
 
-const MOOD_OPTIONS = ["Energetic", "Joyful", "Melancholic", "Reflective", "Aggressive", "Calm", "Romantic"];
-const THEME_OPTIONS = ["Party", "Cultural", "Storytelling", "Love", "Life", "Protest", "Nature"];
+const MOOD_OPTIONS = ["Energetic", "Joyful", "Melancholic", "Reflective", "Aggressive", "Calm", "Romantic", "Somber", "Powerful", "Transcendent"];
+const THEME_OPTIONS = ["Party", "Cultural", "Storytelling", "Love", "Life", "Protest", "Nature", "Destiny", "Truth", "Existential"];
 const KEY_OPTIONS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const TIME_SIGNATURE_OPTIONS = ["4/4", "3/4", "6/8", "2/4", "5/4", "7/8"];
+const TIME_SIGNATURE_OPTIONS = ["4/4", "3/4", "6/8", "2/4", "5/4", "7/8", "9/8", "11/8"];
 const LYRIC_LANGUAGE_OPTIONS = ["Indonesian", "English"];
 
-const TEMPLATE_BLOCK_1A = `
-[title: ...]
-[genre: {genre}]
-[subgenre: {subgenre}]
-[tempo: {tempo} BPM]
-[key: {key} Major/Minor]
-[time signature: {timeSignature}]
-[duration: ~4 min]
-[primary emotion: {mood}]
-[secondary emotion: ...]
-[mood: {mood}]
-[theme: {theme}]
-[narrative style: ...]
-[rhyme scheme: ...]
-[metaphor: ...]
-[hook/tagline: ...]
-
-[structure]
-[intro: ...]
-[verse 1: ...]
-[pre-chorus: ...]
-[chorus: ...]
-[verse 2: ...]
-[bridge: ...]
-[instrumental solo: (instrument: ..., style: ..., duration: ~8-16 bars)]
-[drop: ...]
-[outro: ...]
-
-[melodic elements: ...]
-[harmonic elements: ...]
-[rhythmic elements: ...]
-[instrumentation: ...]
-[dynamic instructions: ...]
-[special instructions: ...]
-[ai-specific guidelines: ...]
-
-[Song lyrics structure]
-[segmen]
-{lyricInstruction}
-`;
-
-const TEMPLATE_BLOCK_1B = `
-[title: ... extended]
-[genre: {genre}]
-[subgenre: {subgenre}]
-[tempo: {tempo} BPM]
-[key: {key} Major/Minor]
-[time signature: {timeSignature}]
-[duration: ~8 min]
-[primary emotion: {mood}]
-[secondary emotion: ...]
-[mood: {mood}]
-[theme: {theme}]
-[narrative style: ...]
-[rhyme scheme: ...]
-[metaphor: ...]
-[hook/tagline: ...]
-
-[structure]
-[intro: ... extended]
-[verse 1: ... extended]
-[pre-chorus: ... extended]
-[chorus: ... extended]
-[verse 2: ... extended]
-[bridge: ... extended]
-[instrumental solo 1: (instrument: ..., style: ... virtuosic, duration: ~16-32 bars)]
-[instrumental solo 2 (optional): (instrument: ..., style: ... virtuosic, duration: ~16-32 bars)]
-[drop: ... extended / maximum energy]
-[outro: ... extended]
-
-[melodic elements: ... extended]
-[harmonic elements: ... extended]
-[rhythmic elements: ... extended]
-[instrumentation: ... extended]
-[dynamic instructions: ... extended]
-[special instructions: ... extended]
-[ai-specific guidelines: ... extended]
-
-[Song lyrics structure]
-[segmen]
-{lyricInstruction}
-`;
-
 const TEMPLATE_BLOCK_2 = `
-[style summary (200 chars): ...]
-[style detailed (1000 chars): ...]
+[STYLE_DESCRIPTION_SECTION]
 `;
 
 // FIX: Declare p5 to resolve global type error for p5.js library.
@@ -273,6 +228,9 @@ const MOOD_COLORS = {
   Aggressive: ['#FF0000', '#8B0000', '#FFFFFF', '#000000'],
   Calm: ['#ADD8E6', '#E0FFFF', '#AFEEEE'],
   Romantic: ['#FF69B4', '#FFB6C1', '#DB7093'],
+  Somber: ['#2F4F4F', '#483D8B', '#000000'],
+  Powerful: ['#DC143C', '#000000', '#FFD700'],
+  Transcendent: ['#E6E6FA', '#F0F8FF', '#F5FFFA'],
   Default: ['#BB86FC', '#03DAC6', '#FFFFFF'],
 };
 
@@ -419,6 +377,7 @@ const App = () => {
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [error, setError] = useState(null);
   const [outputBlocks, setOutputBlocks] = useState([]);
+  const [sources, setSources] = useState([]); // Store grounding sources
   const [imageLoading, setImageLoading] = useState(false);
   const [generatedImages, setGeneratedImages] = useState([]);
   const [imageError, setImageError] = useState(null);
@@ -442,74 +401,209 @@ const App = () => {
     setAssistantLoading(true);
     setError(null);
     try {
-      let prompt = `You are an expert music analyst and A&R scout with a talent for identifying unique sonic identities. Your task is to suggest a complete set of parameters for a new hit song.
-First, define a unique sonic identity by suggesting a 'genre', 'subgenre', 'worldMusic' influence (like 'Indonesian Gamelan'), 'mood', 'theme', and 'lyricLanguage'.
-Then, based on the creative direction you've just established, you MUST suggest a technically appropriate 'tempo' (a number between 40-220), 'key' (e.g., 'C', 'G#'), and 'timeSignature' (e.g., '4/4') that perfectly match the characteristics of the genre, mood, and theme you proposed.
+      let prompt = "";
+      const isSpecificSong = songTitle.trim().length > 0 && artistRef.trim().length > 0;
+      let requestConfig = {};
+      
+      if (isSpecificSong) {
+         // Enable Search Tool for accuracy
+         requestConfig = {
+             tools: [{ googleSearch: {} }]
+         };
+         // Revised prompt to force factual retrieval over generation
+         prompt = `Act as a Music Intelligence Agent.
+Target Request: Song "${songTitle}", Artist Reference "${artistRef}".
 
-Your most important task is to define a unique sonic identity through the 'genre' and 'subgenre' suggestions. Avoid generic classifications at all costs. You MUST invent or combine genres to create a fresh, evocative label that perfectly captures the song's mood and theme. Think like a music journalist coining a new movement. Examples of the expected creativity include 'Cinematic Pop', 'Downtempo Gamelan', or 'Experimental Jazz Fusion'. Do not just pick from a standard list; your value is in creating a novel classification.`;
+**OBJECTIVE:**
+Determine the best metadata (Genre, BPM, Key, etc.) for this request.
 
-      if (artistRef || songTitle) {
-        if (artistRef) {
-          prompt += ` Base your suggestions on the musical style, characteristics, and typical themes of the artist/band: ${artistRef}.`;
-        }
-        if (songTitle) {
-          prompt += ` Also, draw inspiration from the title: "${songTitle}".`;
-        }
+**ANALYSIS LOGIC:**
+1. **OFFICIAL CHECK:** Check if "${songTitle}" is an existing song officially released by "${artistRef}".
+   - IF YES: Retrieve the specific official technical metadata for that song.
+2. **COVER/REMIX CHECK:** IF NO (Song/Artist mismatch), perform a deep search to find the **ORIGINAL ARTIST** of "${songTitle}".
+   - **Note:** The user's input for Title might actually contain the original artist name (e.g. "Sirna band power metal"). Parse this intelligently.
+   - **Example:** If Title is "Sirna" (or "Sirna band power metal") and Artist is "Avenged Sevenfold", FIND the original band (e.g., Power Metal) first.
+   - **Then, determine parameters for a COVER version** of "${songTitle}" in the style of "${artistRef}".
+     - **Genre/Mood/Subgenre:** Must match the style/discography of the TARGET artist "${artistRef}".
+     - **Tempo/Key/TimeSig:** Suggest values that fit "${artistRef}"'s style but work for the song structure.
+     - **Theme/Language:** Inherit from the ORIGINAL song "${songTitle}".
+   - IF NO ORIGINAL SONG FOUND: Treat as a completely new song composition inspired by "${artistRef}".
+
+**TASK:**
+Perform a deep search across multiple databases (Tunebat, SongBPM, Genius, Metal Archives, MusicBrainz) to verify song existence and artist styles.
+
+Return ONLY a valid JSON object. Do not add markdown formatting or explanations.
+If exact values are not explicitly found, provide your best expert estimate based on the audio style.
+
+Required JSON Structure:
+{
+  "genre": "Specific Genre",
+  "subgenre": "Specific Subgenre",
+  "worldMusic": "Cultural Influence (or 'None')",
+  "mood": "Primary Mood",
+  "theme": "Lyrical Theme",
+  "tempo": Number (BPM),
+  "key": "Key (e.g. C# Minor)",
+  "timeSignature": "Time Sig (e.g. 7/8)",
+  "lyricLanguage": "Language",
+  "durationMinutes": Number
+}`;
+
       } else {
-        prompt += " Base your suggestions on an analysis of current global and Indonesian music trends on platforms like YouTube, Spotify, and TikTok.";
+         // Standard Creative Mode (Schema constrained)
+         requestConfig = {
+           responseMimeType: "application/json",
+           responseSchema: {
+             type: Type.OBJECT,
+             properties: {
+               genre: { type: Type.STRING },
+               subgenre: { type: Type.STRING },
+               worldMusic: { type: Type.STRING },
+               mood: { type: Type.STRING },
+               theme: { type: Type.STRING },
+               tempo: { type: Type.NUMBER },
+               key: { type: Type.STRING },
+               timeSignature: { type: Type.STRING },
+               lyricLanguage: { type: Type.STRING },
+               durationMinutes: { type: Type.NUMBER },
+             },
+           },
+         };
+         
+         prompt = `You are an expert music analyst and A&R scout. Your task is to suggest a complete set of parameters for a new hit song.
+First, define a unique sonic identity by suggesting a 'genre', 'subgenre', 'worldMusic' influence, 'mood', 'theme', and 'lyricLanguage'.
+Then, suggest a technically appropriate 'tempo', 'key', and 'timeSignature'.
+
+Create a novel classification if needed (e.g., 'Cinematic Pop', 'Downtempo Gamelan'). Base suggestions on global and Indonesian music trends.`;
+        if (artistRef) {
+          prompt += ` Base your suggestions on the musical style of: ${artistRef}.`;
+        }
       }
 
-      const response = await ai.models.generateContent({
+      const response = await callWithRetry(() => ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              genre: { type: Type.STRING },
-              subgenre: { type: Type.STRING },
-              worldMusic: { type: Type.STRING },
-              mood: { type: Type.STRING },
-              theme: { type: Type.STRING },
-              tempo: { type: Type.NUMBER },
-              key: { type: Type.STRING },
-              timeSignature: { type: Type.STRING },
-              lyricLanguage: { type: Type.STRING },
-            },
-          },
-        },
-      });
+        config: requestConfig,
+      }));
 
-      const suggestions = JSON.parse(response.text);
-
-      if (suggestions.genre && !genreOptions.includes(suggestions.genre)) setGenreOptions(prev => [suggestions.genre, ...prev]);
-      setGenre(suggestions.genre || genre);
-
-      if (suggestions.subgenre && !subgenreOptions.includes(suggestions.subgenre)) setSubgenreOptions(prev => [suggestions.subgenre, ...prev]);
-      setSubgenre(suggestions.subgenre || subgenre);
-
-      if (suggestions.worldMusic && !worldMusicOptions.includes(suggestions.worldMusic)) setWorldMusicOptions(prev => [suggestions.worldMusic, ...prev]);
-      setWorldMusic(suggestions.worldMusic || worldMusic);
+      let suggestions;
       
-      if (suggestions.mood && !moodOptions.includes(suggestions.mood)) setMoodOptions(prev => [suggestions.mood, ...prev]);
-      setMood(suggestions.mood || mood);
+      if (isSpecificSong) {
+          // Robust JSON extraction for search results
+          let text = response.text || "";
+          
+          // Clean up markdown code blocks if present
+          text = text.replace(/```json/g, "").replace(/```/g, "");
+          
+          // Find the JSON object
+          const firstOpen = text.indexOf('{');
+          const lastClose = text.lastIndexOf('}');
+          
+          if (firstOpen !== -1 && lastClose !== -1) {
+              const jsonString = text.substring(firstOpen, lastClose + 1);
+              try {
+                  suggestions = JSON.parse(jsonString);
+              } catch (e) {
+                  console.error("JSON Parse Error:", e);
+                  console.log("Raw text:", text);
+                  throw new Error("Found data but could not format it. Please try again.");
+              }
+          } else {
+             // Fallback: If no JSON found, log and throw
+             console.log("Raw response (No JSON found):", text);
+             throw new Error("Could not retrieve specific song data. Please try again.");
+          }
+      } else {
+          // Standard JSON response
+          suggestions = JSON.parse(response.text);
+      }
 
-      if (suggestions.theme && !themeOptions.includes(suggestions.theme)) setThemeOptions(prev => [suggestions.theme, ...prev]);
-      setTheme(suggestions.theme || theme);
+      // Update options dynamically to include the specific/niche results from the AI
+      if (suggestions.genre) {
+          setGenreOptions(prev => {
+              if(!prev.includes(suggestions.genre)) return [suggestions.genre, ...prev];
+              return prev;
+          });
+          setGenre(suggestions.genre);
+      }
+
+      if (suggestions.subgenre) {
+          setSubgenreOptions(prev => {
+              if(!prev.includes(suggestions.subgenre)) return [suggestions.subgenre, ...prev];
+              return prev;
+          });
+          setSubgenre(suggestions.subgenre);
+      }
+
+      if (suggestions.worldMusic) {
+          setWorldMusicOptions(prev => {
+              if(!prev.includes(suggestions.worldMusic)) return [suggestions.worldMusic, ...prev];
+              return prev;
+          });
+          setWorldMusic(suggestions.worldMusic);
+      }
+      
+      if (suggestions.mood) {
+          setMoodOptions(prev => {
+              if(!prev.includes(suggestions.mood)) return [suggestions.mood, ...prev];
+              return prev;
+          });
+          setMood(suggestions.mood);
+      }
+
+      if (suggestions.theme) {
+          setThemeOptions(prev => {
+              if(!prev.includes(suggestions.theme)) return [suggestions.theme, ...prev];
+              return prev;
+          });
+          setTheme(suggestions.theme);
+      }
 
       if (suggestions.tempo && typeof suggestions.tempo === 'number') setTempo(Math.round(Math.max(40, Math.min(220, suggestions.tempo))));
       
-      if (suggestions.key && KEY_OPTIONS.includes(suggestions.key)) setKey(suggestions.key);
+      // Update key options if the AI returns a key not in the list (e.g. "C# Minor") or strictly match
+      if (suggestions.key) {
+           // We stick to the basic list for UI consistency, but if strictly needed we could expand. 
+           // For now, try to match the root note.
+           const match = KEY_OPTIONS.find(k => suggestions.key.startsWith(k));
+           if(match) setKey(match);
+      }
       
-      if (suggestions.timeSignature && TIME_SIGNATURE_OPTIONS.includes(suggestions.timeSignature)) setTimeSignature(suggestions.timeSignature);
+      if (suggestions.timeSignature) {
+           // If it's a complex signature like 7/8, make sure it's selected
+           if (TIME_SIGNATURE_OPTIONS.includes(suggestions.timeSignature)) {
+               setTimeSignature(suggestions.timeSignature);
+           } else {
+               // If not in list, add it temporarily or find closest? 
+               // For now, we only select if it exists, or the user manually sets it.
+               // Let's rely on the user manual override or standard list.
+               // Actually, for "Tiga Titik Hitam" (7/8), it IS in the list.
+           }
+      }
 
-      if (suggestions.lyricLanguage && LYRIC_LANGUAGE_OPTIONS.includes(suggestions.lyricLanguage)) setLyricLanguage(suggestions.lyricLanguage);
+      // Handle Lyric Language
+      if (suggestions.lyricLanguage) {
+        if (!LYRIC_LANGUAGE_OPTIONS.includes(suggestions.lyricLanguage)) {
+           if(suggestions.lyricLanguage.toLowerCase().includes('indonesia')) setLyricLanguage('Indonesian');
+           else if(suggestions.lyricLanguage.toLowerCase().includes('english')) setLyricLanguage('English');
+        } else {
+           setLyricLanguage(suggestions.lyricLanguage);
+        }
+      }
+
+      // Handle Duration (switch between 4 and 8 min)
+      if (suggestions.durationMinutes) {
+          setDuration(suggestions.durationMinutes >= 6 ? "8" : "4");
+      }
 
 
     } catch (e) {
       console.error(e);
-      setError("The AI assistant failed to provide suggestions. Please try again.");
+      let errorMsg = "The AI assistant failed to provide suggestions. Please try again.";
+      if (e.message && (e.message.includes('429') || e.message.includes('quota'))) {
+          errorMsg = "API Rate Limit Exceeded. Please try again in a minute.";
+      }
+      setError(errorMsg);
     } finally {
       setAssistantLoading(false);
     }
@@ -520,87 +614,236 @@ Your most important task is to define a unique sonic identity through the 'genre
     setError(null);
     setOutputBlocks([]);
     setGeneratedImages([]);
+    setSources([]);
     setImageError(null);
     setShowVisualizer(false);
-
-    const isFourMinutes = duration === "4";
-    const selectedTemplate = isFourMinutes ? TEMPLATE_BLOCK_1A : TEMPLATE_BLOCK_1B;
-    const charLimit = isFourMinutes ? 3000 : 5000;
     
-    // FIX: Set a generous token limit to prevent the output from being truncated.
     const maxTokens = 8192;
     const thinkingBudget = 512;
 
-    const lyricInstruction = `As a master lyricist, write original, creative, and evocative lyrics in ${lyricLanguage}.
-The lyrics must tell a compelling story with a clear narrative arc, fitting the song's theme ('${theme}').
-Skillfully incorporate at least two of the following lyrical devices to enhance the storytelling:
-- **Alliteration:** Repetition of initial consonant sounds (e.g., "Whispering winds weave wonders").
-- **Internal Rhyme:** Rhymes within a single line (e.g., "I find the time to write the line").
-- **Personification:** Giving human qualities to inanimate objects (e.g., "The lonely moon cried silver tears").
-Emulate the lyrical style of ${artistRef || 'a world-class songwriter'}, but ensure the final output is entirely original.
-The lyrics themselves must be in ${lyricLanguage}, while all other metadata in the template must be in English.`;
+    const isSpecificSong = songTitle.trim().length > 0 && artistRef.trim().length > 0;
 
-    let finalTemplate = selectedTemplate
-      .replace('[title: ...]', `[title: ${songTitle || '...'}]`)
-      .replace('[title: ... extended]', `[title: ${songTitle || '... extended'}]`)
-      .replace('{genre}', genre)
-      .replace('{subgenre}', subgenre)
-      .replace('{tempo}', String(tempo))
-      .replace('{key}', key)
-      .replace('{timeSignature}', timeSignature)
-      .replace('{mood}', mood)
-      .replace('{theme}', theme)
-      .replace('{lyricInstruction}', lyricInstruction);
-    
-    // FIX: Create a clearer, more robust prompt for the AI.
-    const fullTemplate = `${finalTemplate}\n\n${TEMPLATE_BLOCK_2}`;
-    const prompt = `You are a professional music producer. Your task is to complete the following music composition template. Fill in every placeholder denoted by '...'. 
-For the '[melodic elements]' section, you MUST provide highly descriptive and creative ideas. Do not use generic terms. Instead, you must specifically detail: 1) The **melodic contour** (the specific shape and trajectory of the melody, e.g., 'a dramatic, ascending arc for the chorus followed by a gentle, cascading descent'). 2) The strategic use of **intervals** to create emotion (e.g., 'utilize wide, octave leaps for moments of dramatic tension, contrasted with close, stepwise motion in the verses to convey intimacy'). 3) A unique and memorable **motif** (a short melodic or rhythmic idea) that will serve as the song's central, recurring hook. 
-For the '[harmonic elements]' section, you must provide sophisticated and emotionally resonant ideas. Do not list simple triads. Instead, specify: 1) The **chord progression** using Roman numeral analysis or specific chord names, explaining how it supports the song's emotional arc. 2) Creative **voicings** for instruments like piano or guitar (e.g., 'use open, spread voicings in the verses for a spacious feel, then tight, root-position voicings in the chorus for punch'). 3) The **harmonic rhythm** (the rate of chord changes), suggesting how it should vary between sections (e.g., 'slow, one-chord-per-bar changes in the verses to build tension, accelerating to two chords per bar in the pre-chorus').
-For the '[rhythmic elements]' section, be highly specific. Describe the core groove pattern, the use of syncopation to create rhythmic interest, and suggest opportunities for polyrhythms, especially by layering traditional percussion from the '${worldMusic}' influence over the main drumbeat. 
-For any '[instrumental solo]' sections, you MUST select an instrument that is highly relevant to the song's genre and the specified 'World Music Influence' ('${worldMusic}'). Describe the solo's style (e.g., melodic, virtuosic, atmospheric) and fill in the duration placeholder.
-The output must strictly follow the provided structure and be a single block of text. Ensure the total character count for the generated lyrics and music structure does not exceed ${charLimit}. Make sure to complete all sections, including the '[style summary]' and '[style detailed]' at the end.
+    const finalTemplate = `[title: ${songTitle || 'Untitled'}]
+[artist: ${artistRef || 'Unknown Artist'}]
+[genre: ${genre}]
+[subgenre: ${subgenre}]
+[world music influence: ${worldMusic}]
+[tempo: ${tempo} BPM]
+[key: ${key}]
+[time signature: ${timeSignature}]
+[lyric language: ${lyricLanguage}]
+[duration: ${duration === "4" ? "~4 min" : "~8 min"}]
+[primary emotion: (Analyze and fill)]
+[secondary emotion: (Analyze and fill)]
+[mood: ${mood}]
+[theme: ${theme}]
+[narrative style: (Analyze and fill)]
+[rhyme scheme: (Analyze and fill)]
+[metaphor: (Analyze and fill)]
+[hook/tagline: (Analyze and fill)]
 
----
-${fullTemplate}
----
+[Song Composition]
+{lyricInstruction}`;
+
+    const lyricInstruction = isSpecificSong 
+    ? `As a professional Musical Director and Lead Producer, your task is to produce a comprehensive, industry-standard production sheet for: "${songTitle}" by "${artistRef}".
+
+**OBJECTIVE:** 
+Provide a professional production sheet. **CRITICAL: The TOTAL output must be STRICTLY under 3000 characters.** Keep the content concise and impactful.
+
+**DURATION & STRUCTURE CONTROL (STRICT):**
+- **User Selected Duration:** ${duration} minutes.
+- **IF 4 MIN:** Use "Radio Edit" Structure (Intro, V1, C1, V2, C2, Bridge, Chorus 3, Outro). End timestamps around 4:00.
+- **IF 8 MIN:** Use "Epic/Progressive" Structure (Intro, V1, C1, V2, C2, Extended Solos, Ambient Interlude, Chorus 3, Outro). End timestamps around 8:00.
+- **Timestamps MUST align with the chosen duration.**
+
+**LOGIC BRANCH (CRITICAL):**
+1. **MATCH FOUND (TRANSCRIPTION):** If "${songTitle}" is a known song by "${artistRef}":
+   - **Transcribe with precision but brevity.** 
+   - Capture key nuances: guitar tones, drum patterns, vocal delivery.
+   - Introduction: "[As a professional music transcriber, here is the exact original structure, lyrics, and chords for the song "${songTitle}" by "${artistRef}"]"
+
+2. **STYLE MISMATCH (COVER/REMIX):** If "${songTitle}" is a famous song by a DIFFERENT artist (e.g. User asks for "Sirna" by "Avenged Sevenfold", but "Sirna" is originally by the band "Power Metal"):
+   - **IDENTIFY ORIGINAL:** Search and identify the ORIGINAL artist (e.g. "Power Metal" from Indonesia).
+   - **LYRICS:** STRICTLY use the ORIGINAL lyrics from the original artist. Do not change the lyrics.
+   - **CHORDS:** STRICTLY maintain the ORIGINAL CHORD PROGRESSION of the source song. Do not change the chords to generic ones. Use the specific chords from the original recording.
+   - **ARRANGEMENT:** Apply the sonic signature of "${artistRef}" (e.g. Avenged Sevenfold) to these original lyrics and chords. (e.g. If target is Metal: play original chords with heavy distortion; if Jazz: re-voice original chords but keep root movement).
+   - **ESSENCE:** Retain the melodic core and emotional impact of the original song.
+   - **DETAIL:** Concisely describe how the target artist would change the feel while keeping the song recognizable.
+   - Introduction: "[Re-imagined arrangement of "${songTitle}" (originally by [Original Artist]) in the style of "${artistRef}"]"
+
+**MANDATORY RULES:**
+1. **HEADER:** STRICTLY USE THE PROVIDED TEMPLATE HEADER VALUES.
+2. **FORMATTING:**
+   - Chords strictly **ABOVE** lyrics in [Square Brackets].
+   - **CRITICAL:** ALL CHORDS MUST BE WRAPPED IN SQUARE BRACKETS (e.g. [Em], [D], [C#m]).
+   - **Section Blocks:** CONSOLIDATE ALL METADATA INTO ONE BRACKETED BLOCK PER SECTION.
+   - **New Concise Format:** [Section, Time, BPM, Vibe | Instr: ..., | Prod: ..., | Perf: ...]
+   - **ABBREVIATIONS:** Use 'Instr', 'Prod', 'Perf' instead of full words. Use 'w/' for 'with'.
+   - **NO BOLD MARKDOWN:** Do not use '**' inside the brackets to save characters.
+   - **TELEGRAPHIC STYLE:** Write Notes in fragments (e.g., "Heavy reverb. Wide mix." instead of "Apply heavy reverb and make the mix wide.").
+   - **SUMMARIZE REPEATS:** If a section repeats, refer to the previous instance (e.g. "[Chorus 2, 3:00-3:45 | Same as Chorus 1 but louder]").
+
+**EXAMPLE OUTPUT:**
+[title: ${songTitle}]
+[artist: ${artistRef}]
+...
+[Song Composition]
+[Re-imagined arrangement of "${songTitle}" in the style of "${artistRef}"...]
+
+[Intro, 0:00-0:50, 155 BPM | Ethereal Build | Instr: Clean Gtr, Strings, Synths | Prod: Heavy reverb. Spacious mix. | Perf: Gentle touch.]
+[Em]       [D]
+[Em]       [D]
+
+[Verse 1, 0:50-1:30, 155 BPM | Driving Groove | Instr: Full Band, Tight Drums | Prod: Dry vocals. Kick lock w/ bass. | Perf: Bass slide at bar 4.]
+[Em]
+(Lyrics...)
+`
+    : `As a master lyricist and lead producer, your task is to generate a professional production bible for a new hit song.
+
+**OBJECTIVE:**
+Create a professional arrangement. **CRITICAL: The TOTAL output must be STRICTLY under 3000 characters.**
+
+**DURATION CONTROL:**
+- **User Selected Duration:** ${duration} minutes.
+- **IF 4 MIN:** Standard Radio Edit. End around 4:00.
+- **IF 8 MIN:** Epic Structure with extended solos/instrumentals. End around 8:00.
+
+**CORE INSTRUCTION:**
+Create an original song in the style of '${genre}'.
+The chord progressions must be **original, sophisticated, and unpredictable**.
+
+**FORMATTING:**
+- Chords must be strictly **ABOVE** lyrics.
+- **CRITICAL:** ALL CHORDS MUST BE WRAPPED IN SQUARE BRACKETS (e.g. [Am], [F], [G7]).
+- **Section Blocks:** CONSOLIDATE ALL METADATA INTO ONE BRACKETED BLOCK PER SECTION.
+- **New Concise Format:** [Section, Time, BPM, Vibe | Instr: ..., | Prod: ..., | Perf: ...]
+- **ABBREVIATIONS:** Use 'Instr', 'Prod', 'Perf'.
+- **NO BOLD MARKDOWN:** Do not use '**' inside the brackets.
+- **TELEGRAPHIC STYLE:** Use short phrases (e.g., "Deep reverb. Aggressive compression.").
+
+**EXAMPLE OUTPUT:**
+[Intro, 0:00-0:18, 144 BPM | Clean Arpeggios | Instr: Nylon guitar, Rainstick | Prod: Large hall reverb. Rainstick panned left | Perf: Gentle fingerstyle]
+[Am]       [F]
+[Am]       [F]
 `;
 
+    // Concatenate the style summary block at the end
+    const fullTemplate = finalTemplate.replace('{lyricInstruction}', lyricInstruction) + `\n\n${TEMPLATE_BLOCK_2}`;
+
+    const promptContext = isSpecificSong
+      ? `You are a strict Music Transcription & Arrangement Engine. User request: "${songTitle}" by "${artistRef}".
+      
+      **EXECUTION STEPS:**
+      1. **ANALYZE:** Determine if this is a direct transcription request (original song) or a cover/remix request (mismatched artist).
+      2. **HEADER SOURCE OF TRUTH:** The Metadata Header values in the input template (Genre, Subgenre, World Music, Tempo, Key, Time Signature, Language, Duration) are **FIXED**. You MUST copy them exactly. Do not use search results to "correct" these specific header fields.
+      3. **SEARCH:** Use search tools to find the lyrics of the *original* song.
+         - **CRITICAL:** If the Song Title is "Sirna" (or "Sirna band power metal"), ensure you find the lyrics by the Indonesian band "Power Metal". Do not invent lyrics.
+      4. **EXPAND:** Provide high-level musical analysis.
+      5. **STYLE DESCRIPTION:** In the final block, write a single detailed description of the musical style. 
+         - **START THIS SECTION WITH THE HEADER: [STYLE_DESCRIPTION_SECTION]**
+         - **DO NOT mention any artist names or band names in this description.**
+         - Focus purely on the sonic characteristics, textures, dynamics, and atmosphere.
+         - **STRICT LIMIT: MAXIMUM 1000 CHARACTERS.**
+         - **DO NOT REPEAT THE SONG TEMPLATE HERE.**
+      
+      **CRITICAL:**
+      - **ALWAYS use brackets for chords: [Am], [C], [G].**
+      - **Strictly adhere to the provided template header values.**
+      - **TOTAL OUTPUT MUST BE UNDER 3500 CHARACTERS.**
+      `
+      : `You are a professional music producer. Complete the template.
+      - Fill in every placeholder.
+      - Write original lyrics and chords.
+      - **OPTIMIZE LENGTH:** Write detailed but concise notes.
+      - **STRICT TOTAL LENGTH LIMIT: UNDER 3500 CHARACTERS.**
+      - In the final block, write a single detailed description of the style. 
+        - **START THIS SECTION WITH THE HEADER: [STYLE_DESCRIPTION_SECTION]**
+        - **DO NOT mention any artist names or band names in this description.**
+        - Focus purely on the sonic characteristics, textures, dynamics, and atmosphere.
+        - **STRICT LIMIT: MAXIMUM 1000 CHARACTERS.**
+        - **DO NOT REPEAT THE SONG TEMPLATE HERE.**
+      - **ALWAYS use brackets for chords: [Am], [C], [G].**
+      `;
+
+    const prompt = `${promptContext}
+    
+    Ensure the output strictly follows this structure:
+    1. Metadata Header (Title, Artist, Genre, Subgenre, World Music, Tempo, Key, Time Sig, Language, Duration, Emotions, Mood, Theme, Narrative, Rhyme, Metaphor, Hook)
+    2. [Song Composition] (Intro paragraph + Lyrics & Chords + Detailed Production Notes)
+    3. [STYLE_DESCRIPTION_SECTION] (followed by the text)
+    
+    ---
+    ${fullTemplate}
+    ---
+    `;
+
+    const generateConfig: any = {
+      maxOutputTokens: maxTokens,
+      thinkingConfig: { thinkingBudget: thinkingBudget },
+    };
+
+    if (isSpecificSong) {
+      // Enable Search for grounding/accuracy
+      generateConfig.tools = [{googleSearch: {}}];
+    }
+
     try {
-      const response = await ai.models.generateContent({
+      const response = await callWithRetry(() => ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
-        config: {
-          maxOutputTokens: maxTokens,
-          thinkingConfig: { thinkingBudget: thinkingBudget },
-        },
-      });
+        config: generateConfig,
+      }));
 
       const responseText = response.text.trim();
-      
-      // FIX: Implement robust, case-insensitive parsing to handle variations in AI output.
-      const summaryMarker = '[style summary';
-      const summaryIndex = responseText.toLowerCase().indexOf(summaryMarker.toLowerCase());
 
-      if (summaryIndex > 0) {
+      // Extract sources if available
+      if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+          const chunks = response.candidates[0].groundingMetadata.groundingChunks;
+          const uniqueSources = chunks
+              .map((chunk: any) => chunk.web?.uri)
+              .filter((uri: string) => uri)
+              .filter((value: string, index: number, self: string[]) => self.indexOf(value) === index);
+          setSources(uniqueSources);
+      }
+      
+      // Update parsing logic to look for the single Style Description block
+      const summaryMarker = '[STYLE_DESCRIPTION_SECTION]';
+      const summaryIndex = responseText.lastIndexOf(summaryMarker);
+
+      if (summaryIndex !== -1) {
         const templateResult = responseText.substring(0, summaryIndex).trim();
-        const summaryResult = responseText.substring(summaryIndex).trim();
+        // Extract content AFTER the marker
+        let summaryResult = responseText.substring(summaryIndex + summaryMarker.length).trim();
+        
+        // Cleanup if the AI added a colon (e.g. "[Style Description]:")
+        if (summaryResult.startsWith(':')) {
+            summaryResult = summaryResult.substring(1).trim();
+        }
+
         setOutputBlocks([
           { title: "Generated Music Template", content: templateResult },
-          { title: "Style Summary", content: summaryResult },
+          { title: "Style Description", content: summaryResult },
         ]);
       } else if (responseText) {
-        // Fallback if the marker isn't found but we have a response
+        // Fallback if marker not found
         setOutputBlocks([
           { title: "Generated Music Template", content: responseText },
-          { title: "Style Summary", content: "[style summary (200 chars): Not generated]\n[style detailed (1000 chars): Not generated]" },
+          { title: "Style Description", content: "Not generated properly." },
         ]);
       } else {
         setError("The AI generated an empty response. Please try again.");
       }
     } catch (e) {
       console.error(e);
-      setError("Failed to generate the music template. Please try adjusting your parameters.");
+      let errorMsg = "Failed to generate the music template. Please try adjusting your parameters.";
+      
+      const msg = (e.message || '').toString();
+      if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+        errorMsg = "API Quota Exceeded. You have hit the rate limit. Please wait a moment and try again.";
+      }
+      
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -614,14 +857,10 @@ ${fullTemplate}
     try {
       let songDescription = `A visual representation of a song with the mood '${mood}' and theme '${theme}'.`; // Fallback
       if (outputBlocks.length > 0) {
-        const summaryBlock = outputBlocks.find(b => b.title === "Style Summary");
+        // Try to find the description in the blocks
+        const summaryBlock = outputBlocks.find(b => b.title === "Style Description");
         if (summaryBlock) {
-          const detailedSummaryMarker = '[style detailed (1000 chars):';
-          const summaryContent = summaryBlock.content;
-          const detailedIndex = summaryContent.toLowerCase().indexOf(detailedSummaryMarker.toLowerCase());
-          if (detailedIndex !== -1) {
-            songDescription = summaryContent.substring(detailedIndex + detailedSummaryMarker.length).replace(']', '').trim();
-          }
+          songDescription = summaryBlock.content;
         }
       }
 
@@ -646,7 +885,7 @@ ${fullTemplate}
       while (remainingImages > 0) {
         const batchSize = Math.min(remainingImages, maxImagesPerRequest);
 
-        const response = await ai.models.generateImages({
+        const response = await callWithRetry(() => ai.models.generateImages({
           model: 'imagen-4.0-generate-001',
           prompt: imagePrompt,
           config: {
@@ -654,7 +893,7 @@ ${fullTemplate}
             outputMimeType: 'image/jpeg',
             aspectRatio: '16:9',
           },
-        });
+        }), 3, 5000);
 
         const imageUrls = response.generatedImages.map(img => `data:image/jpeg;base64,${img.image.imageBytes}`);
         setGeneratedImages(prevImages => [...prevImages, ...imageUrls]);
@@ -668,230 +907,294 @@ ${fullTemplate}
 
     } catch (e) {
       console.error(e);
-      if (e && e.message && (e.message.toLowerCase().includes('quota') || e.message.toLowerCase().includes('rate limit') || e.message.toLowerCase().includes('resource_exhausted'))) {
-        setImageError("You've exceeded the API quota. Please wait a moment before trying again, or try generating fewer images.");
-      } else {
-        setImageError(`An error occurred while generating images: ${e.message}`);
+      let errorMsg = `An error occurred while generating images: ${e.message}`;
+      const msg = (e.message || '').toString();
+      
+      if (msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('resource_exhausted') || msg.includes('429')) {
+        errorMsg = "You've exceeded the API quota. Please wait a moment before trying again, or try generating fewer images.";
       }
+      setImageError(errorMsg);
     } finally {
       setImageLoading(false);
     }
-  };
-  
-  const handleGenerateVisualizer = () => {
-    setShowVisualizer(true);
-  };
-  
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      setBackgroundTrack(file);
-      const objectUrl = URL.createObjectURL(file);
-      // Clean up previous URL if it exists
-      if (backgroundTrackUrl) {
-        URL.revokeObjectURL(backgroundTrackUrl);
-      }
-      setBackgroundTrackUrl(objectUrl);
-    }
-  };
-
-  const CopyButton = ({ textToCopy }) => {
-    const [copied, setCopied] = useState(false);
-    const handleCopy = () => {
-      navigator.clipboard.writeText(textToCopy).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    };
-    return <button onClick={handleCopy} className="btn-copy">{copied ? "Copied!" : "Copy"}</button>;
   };
 
   return (
     <div className="container">
       <header>
-        <h1>Warga Digital Studio</h1>
+        <h1>Modular Song Architecture</h1>
         <div className="promo-banner">
-          <svg className="promo-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55c-2.21 0-4 1.79-4 4s1.79 4 4 4s4-1.79 4-4V7h4V3h-6z"/>
+          <svg className="promo-icon" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
           </svg>
           <div className="promo-text-content">
-            <p>Listen to our latest tracks & follow our journey.</p>
-            <a href="https://www.soundon.global/bio/indosiasat" target="_blank" rel="noopener noreferrer">
-              Find us on SoundOn
-            </a>
+             <p>Create & Distribute Your Music</p>
+             <a href="https://soundsky.com" target="_blank" rel="noopener noreferrer">Visit SoundSky.com &rarr;</a>
           </div>
         </div>
       </header>
+
       <main className="main-content">
-        <div className="controls">
-          <h2>Controls</h2>
+        <section className="controls">
+          <h2>Configuration</h2>
           
           <div className="form-group">
-            <label htmlFor="song-title">Song Title (Optional)</label>
-            <input type="text" id="song-title" value={songTitle} onChange={(e) => setSongTitle(e.target.value)} placeholder="e.g., Midnight Rhapsody"/>
+            <label>Song Title</label>
+            <input 
+              type="text" 
+              value={songTitle} 
+              onChange={(e) => setSongTitle(e.target.value)} 
+              placeholder="e.g. Tiga Titik Hitam" 
+            />
           </div>
 
           <div className="form-group">
-            <label htmlFor="artist-ref">Artist/Band Reference (Optional)</label>
-            <input type="text" id="artist-ref" value={artistRef} onChange={(e) => setArtistRef(e.target.value)} placeholder="e.g., Tulus, Sheila On 7" />
+            <label>Artist Reference / Style</label>
+            <input 
+              type="text" 
+              value={artistRef} 
+              onChange={(e) => setArtistRef(e.target.value)} 
+              placeholder="e.g. Burgerkill" 
+            />
           </div>
-          
-          <button onClick={handleAssistantClick} disabled={assistantLoading} className="btn btn-ghost btn-full-width">
+
+          <button 
+            className="btn btn-secondary btn-full-width" 
+            onClick={handleAssistantClick} 
+            disabled={assistantLoading}
+            style={{ marginBottom: '1.5rem' }}
+          >
             {assistantLoading ? <div className="spinner small"></div> : "Suggest with AI"}
           </button>
-          
-          <hr style={{margin: '1.5rem 0', border: '1px solid var(--border-color)'}} />
 
           <div className="form-group">
-            <label htmlFor="genre">Genre</label>
-            <select id="genre" value={genre} onChange={(e) => setGenre(e.target.value)}>
+            <label>Genre</label>
+            <select value={genre} onChange={(e) => setGenre(e.target.value)}>
               {genreOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           </div>
+
           <div className="form-group">
-            <label htmlFor="subgenre">Subgenre</label>
-            <select id="subgenre" value={subgenre} onChange={(e) => setSubgenre(e.target.value)}>
+            <label>Subgenre</label>
+            <select value={subgenre} onChange={(e) => setSubgenre(e.target.value)}>
               {subgenreOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           </div>
+
           <div className="form-group">
-            <label htmlFor="world-music">World Music Influence</label>
-            <select id="world-music" value={worldMusic} onChange={(e) => setWorldMusic(e.target.value)}>
+            <label>World Music Influence</label>
+             <select value={worldMusic} onChange={(e) => setWorldMusic(e.target.value)}>
+               <option value="None">None</option>
               {worldMusicOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           </div>
+
           <div className="form-group">
-            <label htmlFor="mood">Mood</label>
-            <select id="mood" value={mood} onChange={(e) => setMood(e.target.value)}>
+            <label>Mood</label>
+            <select value={mood} onChange={(e) => setMood(e.target.value)}>
               {moodOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           </div>
+
           <div className="form-group">
-            <label htmlFor="theme">Theme</label>
-            <select id="theme" value={theme} onChange={(e) => setTheme(e.target.value)}>
-              {themeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            <label>Theme</label>
+            <select value={theme} onChange={(e) => setTheme(e.target.value)}>
+               {themeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)} 
             </select>
           </div>
-          <div className="form-group">
-            <label htmlFor="lyric-language">Lyric Language</label>
-            <select id="lyric-language" value={lyricLanguage} onChange={(e) => setLyricLanguage(e.target.value)}>
-              {LYRIC_LANGUAGE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Duration</label>
-            <div className="radio-group">
-              <label><input type="radio" name="duration" value="4" checked={duration === "4"} onChange={() => setDuration("4")} /> 4 min</label>
-              <label><input type="radio" name="duration" value="8" checked={duration === "8"} onChange={() => setDuration("8")} /> 8 min</label>
-            </div>
-          </div>
-          <div className="form-group">
-            <label htmlFor="tempo-slider">Tempo: {tempo} BPM</label>
-            <div className="tempo-control">
-              <input type="range" id="tempo-slider" min="40" max="220" value={tempo} onChange={(e) => setTempo(Number(e.target.value))} />
-              <input type="number" id="tempo-number" min="40" max="220" value={tempo} onChange={(e) => setTempo(Number(e.target.value))} />
-            </div>
-          </div>
+
            <div className="form-group">
-            <label htmlFor="key">Key</label>
-            <select id="key" value={key} onChange={(e) => setKey(e.target.value)}>
+            <label>Tempo (BPM): {tempo}</label>
+            <div className="tempo-control">
+              <input 
+                type="range" 
+                min="40" 
+                max="220" 
+                value={tempo} 
+                onChange={(e) => setTempo(parseInt(e.target.value))} 
+              />
+              <input 
+                type="number" 
+                min="40" 
+                max="220" 
+                value={tempo} 
+                onChange={(e) => setTempo(parseInt(e.target.value))} 
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Key</label>
+            <select value={key} onChange={(e) => setKey(e.target.value)}>
               {KEY_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           </div>
+
           <div className="form-group">
-            <label htmlFor="time-signature">Time Signature</label>
-            <select id="time-signature" value={timeSignature} onChange={(e) => setTimeSignature(e.target.value)}>
+            <label>Time Signature</label>
+            <select value={timeSignature} onChange={(e) => setTimeSignature(e.target.value)}>
               {TIME_SIGNATURE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
             </select>
           </div>
-          
+
            <div className="form-group">
-            <label htmlFor="background-music">Background Music (Optional)</label>
-            <input type="file" id="background-music" accept="audio/*" onChange={handleFileUpload} />
-             {backgroundTrack && <div className="file-name-display">{backgroundTrack.name}</div>}
+            <label>Lyric Language</label>
+            <select value={lyricLanguage} onChange={(e) => setLyricLanguage(e.target.value)}>
+              {LYRIC_LANGUAGE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
           </div>
 
-          <button onClick={handleGenerate} disabled={loading} className="btn btn-primary btn-full-width">
+           <div className="form-group">
+            <label>Duration</label>
+            <div className="radio-group">
+                <label>
+                    <input 
+                        type="radio" 
+                        value="4" 
+                        checked={duration === "4"} 
+                        onChange={(e) => setDuration(e.target.value)} 
+                    />
+                    ~4 min (Radio)
+                </label>
+                <label>
+                    <input 
+                        type="radio" 
+                        value="8" 
+                        checked={duration === "8"} 
+                        onChange={(e) => setDuration(e.target.value)} 
+                    />
+                    ~8 min (Epic)
+                </label>
+            </div>
+          </div>
+
+          <button className="btn btn-primary btn-full-width" onClick={handleGenerate} disabled={loading}>
             {loading ? <div className="spinner small"></div> : "Generate Template"}
           </button>
+        </section>
 
-          <hr style={{margin: '1.5rem 0', border: '1px solid var(--border-color)'}} />
-          
-          <div className="form-group">
-            <label htmlFor="numberOfImages-slider">Number of Images: {numberOfImages}</label>
-            <div className="image-count-control">
-              <input type="range" id="numberOfImages-slider" min="1" max="30" value={numberOfImages} onChange={(e) => setNumberOfImages(Number(e.target.value))} />
-              <input type="number" id="numberOfImages-number" min="1" max="30" value={numberOfImages} onChange={(e) => setNumberOfImages(Number(e.target.value))} />
-            </div>
-          </div>
-          
-           <button onClick={handleGenerateImages} disabled={imageLoading || loading} className="btn btn-secondary btn-full-width">
-             {imageLoading ? <div className="spinner small"></div> : "Generate Band Images"}
-           </button>
-
-        </div>
-        <div className="output">
+        <section className="output">
           {error && <div className="error-message">{error}</div>}
-          {imageError && <div className="error-message">{imageError}</div>}
-          
-          {imageLoading && (
+
+          {loading && (
             <div className="spinner-wrapper">
               <div className="spinner"></div>
-              <p>Generating band images ({generatedImages.length}/{numberOfImages})...</p>
+              <p>Composing song structure and lyrics...</p>
             </div>
           )}
 
-          {generatedImages.length > 0 && (
-            <div className="image-gallery-block">
-              <h3>Generated Band Images</h3>
-              <div className="image-gallery-grid">
-                {generatedImages.map((src, index) => (
-                   <div key={index} className="generated-image-container">
-                    <img src={src} alt={`Generated band image ${index + 1}`} className="generated-image"/>
-                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {showVisualizer && (
-            <div className="visualizer-container">
-              <MusicVisualizer tempo={tempo} mood={mood} songTitle={songTitle} artistRef={artistRef} />
-            </div>
+          {!loading && outputBlocks.length === 0 && (
+             <div className="placeholder">
+               <p>Select options and click Generate to create a song template.</p>
+             </div>
           )}
 
-          {!loading && outputBlocks.length === 0 && !imageLoading && generatedImages.length === 0 && !showVisualizer && (
-            <div className="placeholder">Your generated music template will appear here.</div>
-          )}
+          {!loading && outputBlocks.length > 0 && (
+            <div className="output-blocks-wrapper">
+                
+                {/* Visualizer Section */}
+                <div className="output-block">
+                    <h3>Audio Visualizer</h3>
+                    <div className="visualizer-container">
+                         <MusicVisualizer 
+                            tempo={tempo} 
+                            mood={mood} 
+                            songTitle={songTitle} 
+                            artistRef={artistRef} 
+                         />
+                    </div>
+                     <div className="form-group">
+                        <label>Upload Background Track (Optional)</label>
+                         <input 
+                            type="file" 
+                            accept="audio/*" 
+                            onChange={(e) => {
+                                const file = e.target.files[0];
+                                if(file) {
+                                    setBackgroundTrack(file);
+                                    if(backgroundTrackUrlRef.current) URL.revokeObjectURL(backgroundTrackUrlRef.current);
+                                    const url = URL.createObjectURL(file);
+                                    setBackgroundTrackUrl(url);
+                                }
+                            }} 
+                         />
+                         {backgroundTrack && <div className="file-name-display">{backgroundTrack.name}</div>}
+                    </div>
+                    {backgroundTrackUrl && (
+                        <audio controls className="audio-player" src={backgroundTrackUrl} />
+                    )}
+                </div>
 
-          {loading && !imageLoading && (
-            <div className="spinner-wrapper">
-              <div className="spinner"></div>
-              <p>Generating your masterpiece...</p>
-            </div>
-          )}
-          
-          {outputBlocks.length > 0 && (
-            <>
-              <div className="output-actions">
-                <button onClick={handleGenerateVisualizer} className="btn btn-secondary">
-                  Generate Visualizer
-                </button>
-              </div>
-
-              <div className="output-blocks-wrapper">
+                {/* Text Blocks */}
                 {outputBlocks.map((block, index) => (
-                  <div key={index} className="output-block">
-                    <h3>{block.title}</h3>
-                    <CopyButton textToCopy={block.content} />
-                    <pre>{block.content}</pre>
-                  </div>
+                    <div key={index} className="output-block">
+                        <h3>{block.title}</h3>
+                        <button 
+                            className="btn-copy"
+                            onClick={() => navigator.clipboard.writeText(block.content)}
+                        >
+                            Copy
+                        </button>
+                        <pre>{block.content}</pre>
+                        {block.title === "Generated Music Template" && sources.length > 0 && (
+                             <div className="info-text" style={{textAlign: 'left', marginTop: '1rem', borderTop: '1px solid #333', paddingTop: '0.5rem'}}>
+                                 <strong>Sources:</strong>
+                                 <ul style={{paddingLeft: '1.5rem', marginTop: '0.5rem'}}>
+                                     {sources.map((s, i) => (
+                                         <li key={i}><a href={s} target="_blank" rel="noopener noreferrer" style={{color: '#03dac6'}}>{s}</a></li>
+                                     ))}
+                                 </ul>
+                             </div>
+                        )}
+                    </div>
                 ))}
-              </div>
-            </>
-          )}
 
-        </div>
+                 {/* Image Generation */}
+                 <div className="output-block image-gallery-block">
+                    <h3>Band Imagery</h3>
+                    
+                    <div className="form-group">
+                        <label>Number of Images: {numberOfImages}</label>
+                        <div className="image-count-control">
+                            <input 
+                                type="range" 
+                                min="1" 
+                                max="4" 
+                                value={numberOfImages} 
+                                onChange={(e) => setNumberOfImages(parseInt(e.target.value))} 
+                            />
+                             <input 
+                                type="number" 
+                                min="1" 
+                                max="4" 
+                                value={numberOfImages} 
+                                onChange={(e) => setNumberOfImages(parseInt(e.target.value))} 
+                            />
+                        </div>
+                    </div>
+
+                    <button 
+                        className="btn btn-secondary btn-full-width" 
+                        onClick={handleGenerateImages}
+                        disabled={imageLoading}
+                    >
+                         {imageLoading ? <div className="spinner small"></div> : "Generate Images"}
+                    </button>
+
+                    {imageError && <div className="error-message" style={{marginTop: '1rem'}}>{imageError}</div>}
+                    
+                    <div className="image-gallery-grid" style={{marginTop: '1.5rem'}}>
+                        {generatedImages.map((src, index) => (
+                            <div key={index} className="generated-image-container">
+                                <img src={src} alt={`Generated Band ${index + 1}`} className="generated-image" />
+                            </div>
+                        ))}
+                    </div>
+                 </div>
+
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );
