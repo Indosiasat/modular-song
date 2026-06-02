@@ -1,5 +1,6 @@
 {
   "name": "Modular Song",
   "description": "A music template generator that automatically creates song structures, lyrics, and style summaries. Suggests genres, moods, and technical parameters with AI. Generates band imagery and a music visualizer. Now installable as a PWA for offline access.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": []
 }
